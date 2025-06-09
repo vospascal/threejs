@@ -40,11 +40,11 @@ export class IslandScene {
   }
 
   public createTeleportMarker(): THREE.Mesh {
-    const geometry = new THREE.CircleGeometry(0.25, 32).rotateX(-Math.PI / 2);
+    const geometry = new THREE.RingGeometry(0.1, 0.2, 32);
     const material = new THREE.MeshBasicMaterial({ 
-      color: 0x00ff00,
+      color: 0xffffff,
       transparent: true,
-      opacity: 0.8 
+      opacity: 0.6 
     });
     const marker = new THREE.Mesh(geometry, material);
     marker.visible = false;

@@ -10,12 +10,15 @@ export class VRControls {
   private startingPosition: THREE.Vector3;
   private positionManager: PositionManager;
   private rotationTriggered: Map<XRInputSource, boolean>;
+  private debugToggleTriggered: Map<XRInputSource, boolean>;
+  private onDebugToggle?: () => void;
 
   constructor(appState: AppState, startingPosition: THREE.Vector3, positionManager: PositionManager) {
     this.appState = appState;
     this.startingPosition = startingPosition;
     this.positionManager = positionManager;
     this.rotationTriggered = new Map();
+    this.debugToggleTriggered = new Map();
     this.tempMatrix = new THREE.Matrix4();
     this.controllers = this.setupControllers();
     this.setupVRSession();
@@ -57,10 +60,37 @@ export class VRControls {
   }
 
   private addRayVisuals(controller: THREE.XRTargetRaySpace): void {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, -1], 3));
-    const ray = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0xffffff }));
-    controller.add(ray);
+    // Add ray visual when controller is connected
+    controller.addEventListener('connected', (event) => {
+      const ray = this.buildController(event.data);
+      if (ray) {
+        controller.add(ray);
+      }
+    });
+  }
+
+  private buildController(data: any): THREE.Object3D | null {
+    let geometry: THREE.BufferGeometry;
+    let material: THREE.Material;
+
+    switch (data.targetRayMode) {
+      case 'tracked-pointer':
+        geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, -1], 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute([0.5, 0.5, 0.5, 0, 0, 0], 3));
+
+        material = new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending });
+
+        return new THREE.Line(geometry, material);
+
+      case 'gaze':
+        geometry = new THREE.RingGeometry(0.02, 0.04, 32).translate(0, 0, -1);
+        material = new THREE.MeshBasicMaterial({ opacity: 0.5, transparent: true });
+        return new THREE.Mesh(geometry, material);
+
+      default:
+        return null;
+    }
   }
 
   private setupTeleportListeners(controller: THREE.XRTargetRaySpace): void {
@@ -138,23 +168,34 @@ export class VRControls {
 
   public updateTeleportTargeting(teleportMarker: THREE.Mesh): void {
     this.appState.intersection = undefined;
+    let surfaceNormal: THREE.Vector3 | undefined;
     
     // Check both controllers for surface targeting
     [this.controllers.controller1, this.controllers.controller2].forEach(controller => {
       if (controller.userData.isSelecting) {
-        // Use unified position manager for VR controller raycast
-        const surfacePoint = this.positionManager.raycastFromController(controller);
+        // Use unified position manager for VR controller raycast with surface normal
+        const raycastResult = this.positionManager.raycastFromControllerWithNormal(controller);
         
-        if (surfacePoint) {
-          this.appState.intersection = surfacePoint;
-          console.log('VR detected surface at:', this.positionManager.formatPosition(surfacePoint));
+        if (raycastResult) {
+          this.appState.intersection = raycastResult.point;
+          surfaceNormal = raycastResult.normal;
+          console.log('VR detected surface at:', this.positionManager.formatPosition(raycastResult.point));
         }
       }
     });
     
-    // Update teleport marker visibility and position
-    if (this.appState.intersection) {
-      teleportMarker.position.copy(this.appState.intersection);
+    // Update teleport marker visibility, position, and orientation
+    if (this.appState.intersection && surfaceNormal) {
+      const intersection = this.appState.intersection as THREE.Vector3;
+      teleportMarker.position.copy(intersection);
+      
+      // Orient the teleport marker to the surface normal (same as desktop)
+      teleportMarker.lookAt(
+        intersection.x + surfaceNormal.x,
+        intersection.y + surfaceNormal.y,
+        intersection.z + surfaceNormal.z
+      );
+      
       teleportMarker.visible = true;
     } else {
       teleportMarker.visible = false;
@@ -232,6 +273,36 @@ export class VRControls {
           this.rotationTriggered.set(source, false);
         }
     });
+  }
+
+  public handleDebugToggle(): void {
+    this.appState.inputSources.forEach(source => {
+      if (!source.gamepad) return;
+      
+      // Use A button (button 4) or X button (button 5) for debug toggle
+      const aButton = source.gamepad.buttons[4];
+      const xButton = source.gamepad.buttons[5];
+      
+      const debugPressed = (aButton && aButton.pressed) || (xButton && xButton.pressed);
+      
+      if (debugPressed) {
+        // Prevent multiple triggers while holding the button
+        if (this.debugToggleTriggered.get(source)) return;
+        this.debugToggleTriggered.set(source, true);
+        
+        // Trigger debug toggle
+        if (this.onDebugToggle) {
+          this.onDebugToggle();
+        }
+      } else {
+        // Reset trigger when button is released
+        this.debugToggleTriggered.set(source, false);
+      }
+    });
+  }
+
+  public setDebugToggleCallback(callback: () => void): void {
+    this.onDebugToggle = callback;
   }
 
   public getControllers(): VRControllers {

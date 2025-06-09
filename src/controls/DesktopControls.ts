@@ -35,12 +35,12 @@ export class DesktopControls {
   }
 
   private createRaycastCircle(): void {
-    // Create a small circle to show raycast hit point
-    const geometry = new THREE.CircleGeometry(0.1, 16);
+    // Create a ring to show raycast hit point (larger for better desktop visibility)
+    const geometry = new THREE.RingGeometry(0.05, 0.1, 32);
     const material = new THREE.MeshBasicMaterial({ 
-      color: 0x00ff00, 
-      transparent: true, 
-      opacity: 0.7 
+      color: 0xffffff,
+      opacity: 0.5, 
+      transparent: true 
     });
     this.raycastCircle = new THREE.Mesh(geometry, material);
     this.raycastCircle.visible = false;
@@ -74,14 +74,15 @@ export class DesktopControls {
     // Only show marker when pointer lock is active and teleportation is enabled
     if (!this.controls.isLocked || !this.teleportationEnabled) return;
 
-    // Use unified position manager for raycast
-    const surfacePoint = this.positionManager.raycastFromScreen(
+    // Use unified position manager for raycast with surface normal
+    const raycastResult = this.positionManager.raycastFromScreenWithNormal(
       event.clientX, 
       event.clientY, 
       this.controls.object as THREE.Camera
     );
     
-    if (surfacePoint) {
+    if (raycastResult) {
+      const { point: surfacePoint, normal: surfaceNormal } = raycastResult;
       this.lastRaycastHit = surfacePoint.clone();
       
       // Show teleport marker
@@ -90,11 +91,18 @@ export class DesktopControls {
         this.teleportMarker.visible = true;
       }
       
-      // Show raycast circle
+      // Show raycast circle oriented to surface
       if (this.raycastCircle) {
         this.raycastCircle.position.copy(surfacePoint);
         this.raycastCircle.position.y += 0.01; // Slightly above surface
-        this.raycastCircle.lookAt(this.controls.object.position);
+        
+        // Orient the ring to the surface normal
+        this.raycastCircle.lookAt(
+          surfacePoint.x + surfaceNormal.x,
+          surfacePoint.y + surfaceNormal.y,
+          surfacePoint.z + surfaceNormal.z
+        );
+        
         this.raycastCircle.visible = true;
       }
     } else {

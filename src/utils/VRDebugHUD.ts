@@ -1,22 +1,22 @@
 import * as THREE from 'three';
 
-export class VRDebugHUD {
-  private hudGroup: THREE.Group;
-  private textMeshes: { [key: string]: THREE.Mesh };
+export class VRDebugHUD extends THREE.Group {
   private canvas: HTMLCanvasElement;
   private context: CanvasRenderingContext2D;
   private texture: THREE.CanvasTexture;
-  private camera: THREE.Camera;
+  private material: THREE.MeshBasicMaterial;
+  private plane: THREE.Mesh;
 
-  constructor(camera: THREE.Camera, scene: THREE.Scene) {
-    this.camera = camera;
-    this.hudGroup = new THREE.Group();
-    this.textMeshes = {};
+  constructor() {
+    super();
     
     // Create canvas for text rendering
     this.canvas = document.createElement('canvas');
     this.canvas.width = 512;
     this.canvas.height = 256;
+    this.canvas.style.display = 'none';
+    document.body.appendChild(this.canvas);
+    
     this.context = this.canvas.getContext('2d')!;
     
     // Create texture from canvas
@@ -24,25 +24,30 @@ export class VRDebugHUD {
     this.texture.needsUpdate = true;
     
     this.createHUD();
-    scene.add(this.hudGroup);
+    this.setupPosition();
   }
 
   private createHUD(): void {
-    // Create a plane for the debug text
-    const geometry = new THREE.PlaneGeometry(1, 0.5);
-    const material = new THREE.MeshBasicMaterial({
+    // Create a plane for the debug text (larger for better readability)
+    const geometry = new THREE.PlaneGeometry(2, 1);
+    this.material = new THREE.MeshBasicMaterial({
       map: this.texture,
       transparent: true,
+      depthTest: false, // Always render on top
       side: THREE.DoubleSide
     });
     
-    const hudMesh = new THREE.Mesh(geometry, material);
+    this.plane = new THREE.Mesh(geometry, this.material);
+    this.add(this.plane);
+  }
+
+  private setupPosition(): void {
+    // Position relative to camera view (HUD overlay)
+    // Top-left corner of the view
+    this.position.set(0,0, -5);
     
-    // Position HUD in top-left of view
-    hudMesh.position.set(-0.8, 0.6, -2);
-    
-    this.hudGroup.add(hudMesh);
-    this.textMeshes['main'] = hudMesh;
+    // Face forward relative to camera
+    this.rotation.y = 0;
   }
 
   public updateDebugInfo(
@@ -51,46 +56,51 @@ export class VRDebugHUD {
     teleportPosition: THREE.Vector3 | null,
     isVR: boolean
   ): void {
-    // Clear canvas
-    this.context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    // Clear canvas with semi-transparent background
+    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.context.fillStyle = 'rgba(0, 0, 0, 0.7)';
     this.context.fillRect(0, 0, this.canvas.width, this.canvas.height);
     
     // Set text style
-    this.context.fillStyle = 'white';
-    this.context.font = '16px monospace';
+    this.context.fillStyle = '#00ff00'; // Bright green for visibility
+    this.context.font = 'bold 18px monospace';
+    this.context.textAlign = 'left';
     
     // Draw debug information
     let y = 30;
-    const lineHeight = 20;
+    const lineHeight = 25;
+    const leftMargin = 15;
     
-    this.context.fillText('=== DEBUG INFO ===', 10, y);
-    y += lineHeight * 1.5;
+    this.context.fillText('=== DEBUG INFO ===', leftMargin, y);
+    y += lineHeight * 1.2;
     
     // Current position
     const posStr = this.formatVector(currentPosition);
-    this.context.fillText(`Position: ${posStr}`, 10, y);
+    this.context.fillText(`Position: ${posStr}`, leftMargin, y);
     y += lineHeight;
     
     // Raycast hit
     if (raycastHit) {
       const rayStr = this.formatVector(raycastHit);
-      this.context.fillText(`Raycast: ${rayStr}`, 10, y);
+      this.context.fillText(`Raycast: ${rayStr}`, leftMargin, y);
     } else {
-      this.context.fillText('Raycast: No hit', 10, y);
+      this.context.fillText('Raycast: No hit', leftMargin, y);
     }
     y += lineHeight;
     
     // Teleport position
     if (teleportPosition) {
       const teleStr = this.formatVector(teleportPosition);
-      this.context.fillText(`Teleport: ${teleStr}`, 10, y);
+      this.context.fillText(`Teleport: ${teleStr}`, leftMargin, y);
     } else {
-      this.context.fillText('Teleport: None', 10, y);
+      this.context.fillText('Teleport: None', leftMargin, y);
     }
     y += lineHeight;
     
     // Mode
-    this.context.fillText(`Mode: ${isVR ? 'VR' : 'Desktop'}`, 10, y);
+    const modeColor = isVR ? '#ff6600' : '#0066ff'; // Orange for VR, Blue for Desktop
+    this.context.fillStyle = modeColor;
+    this.context.fillText(`Mode: ${isVR ? 'VR' : 'Desktop'}`, leftMargin, y);
     
     // Update texture
     this.texture.needsUpdate = true;
@@ -100,24 +110,15 @@ export class VRDebugHUD {
     return `${vector.x.toFixed(2)}, ${vector.y.toFixed(2)}, ${vector.z.toFixed(2)}`;
   }
 
-  public update(): void {
-    // Make HUD always face the camera
-    this.hudGroup.lookAt(this.camera.position);
-    
-    // In VR, position relative to camera
-    if (this.camera.parent) {
-      // VR mode - position relative to headset
-      this.hudGroup.position.copy(this.camera.position);
-      this.hudGroup.position.add(new THREE.Vector3(-0.5, 0.3, -1));
-    }
-  }
-
   public setVisible(visible: boolean): void {
-    this.hudGroup.visible = visible;
+    this.visible = visible;
   }
 
   public dispose(): void {
     this.texture.dispose();
-    this.hudGroup.parent?.remove(this.hudGroup);
+    if (this.canvas.parentNode) {
+      this.canvas.parentNode.removeChild(this.canvas);
+    }
+    this.parent?.remove(this);
   }
 } 

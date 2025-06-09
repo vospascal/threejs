@@ -7,13 +7,23 @@ export class DebugUI {
   private teleportPosElement: HTMLElement;
   private currentModeElement: HTMLElement;
   private debugContainer: HTMLElement;
+  private toggleButton: HTMLElement;
+  private isVisible: boolean = false;
+  private onToggle?: (visible: boolean) => void;
 
   constructor() {
     this.currentPosElement = document.getElementById('currentPos')!;
     this.raycastPosElement = document.getElementById('raycastPos')!;
     this.teleportPosElement = document.getElementById('teleportPos')!;
     this.currentModeElement = document.getElementById('currentMode')!;
-    this.debugContainer = document.getElementById('debug-ui')!;
+    this.debugContainer = document.getElementById('debug')!;
+    this.toggleButton = document.getElementById('debugToggle')!;
+    
+    // Setup toggle functionality
+    this.setupToggle();
+    
+    // Start hidden
+    this.setVisible(false);
   }
 
   public updateCurrentPosition(position: THREE.Vector3): void {
@@ -55,7 +65,31 @@ export class DebugUI {
     return `${vector.x.toFixed(PositionManager.POSITION_PRECISION)}, ${vector.y.toFixed(PositionManager.POSITION_PRECISION)}, ${vector.z.toFixed(PositionManager.POSITION_PRECISION)}`;
   }
 
+  private setupToggle(): void {
+    this.toggleButton.addEventListener('click', () => {
+      this.toggle();
+    });
+  }
+
+  public toggle(): void {
+    this.setVisible(!this.isVisible);
+  }
+
   public setVisible(visible: boolean): void {
+    this.isVisible = visible;
     this.debugContainer.style.display = visible ? 'block' : 'none';
+    
+    // Update button appearance
+    this.toggleButton.style.background = visible ? 'rgba(0,255,0,0.2)' : 'rgba(0,0,0,0.8)';
+    this.toggleButton.textContent = visible ? 'HIDE DEBUG' : 'SHOW DEBUG';
+    
+    // Notify parent component
+    if (this.onToggle) {
+      this.onToggle(visible);
+    }
+  }
+
+  public setToggleCallback(callback: (visible: boolean) => void): void {
+    this.onToggle = callback;
   }
 } 

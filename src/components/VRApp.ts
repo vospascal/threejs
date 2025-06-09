@@ -101,12 +101,30 @@ export class VRApp {
     // Initialize debug UI (HTML overlay for desktop)
     this.debugUI = new DebugUI();
 
-    // Initialize VR debug HUD (3D overlay for VR)
-    this.vrDebugHUD = new VRDebugHUD(this.appState.camera, this.appState.scene);
-    this.vrDebugHUD.setVisible(false); // Start hidden
+    // Initialize 3D debug HUD (camera-attached overlay for both desktop and VR)
+    this.vrDebugHUD = new VRDebugHUD();
+    this.appState.camera.add(this.vrDebugHUD);
+    this.vrDebugHUD.setVisible(false); // Start hidden, toggle with debug controls
+    
+    // Setup debug toggle callbacks
+    this.setupDebugToggle();
 
     // Start render loop
     this.appState.renderer.setAnimationLoop(this.render.bind(this));
+  }
+
+  private setupDebugToggle(): void {
+    // Setup toggle callback for HTML debug UI
+    this.debugUI.setToggleCallback((visible: boolean) => {
+      // When HTML debug is toggled, also toggle 3D debug HUD
+      this.vrDebugHUD.setVisible(visible);
+    });
+
+    // Setup VR controller debug toggle callback
+    this.vrControls.setDebugToggleCallback(() => {
+      // Toggle both debug displays when VR controller button is pressed
+      this.debugUI.toggle();
+    });
   }
 
   private setupVRSessionHandling(): void {
@@ -115,20 +133,18 @@ export class VRApp {
       this.desktopControls.unlock();
       this.desktopControls.setTeleportationEnabled(false);
 
-      // Switch debug displays
+      // Update debug displays
       this.debugUI.updateMode(true);
-      this.debugUI.setVisible(false); // Hide HTML overlay
-      this.vrDebugHUD.setVisible(true); // Show 3D HUD
+      // Keep both debug displays visible - the 3D HUD works well in both modes
     });
 
     this.appState.renderer.xr.addEventListener('sessionend', () => {
       // Re-enable desktop teleportation when exiting VR
       this.desktopControls.setTeleportationEnabled(true);
 
-      // Switch debug displays back
+      // Update debug displays
       this.debugUI.updateMode(false);
-      this.debugUI.setVisible(true); // Show HTML overlay
-      this.vrDebugHUD.setVisible(false); // Hide 3D HUD
+      // Keep both debug displays visible
     });
   }
 
@@ -207,6 +223,7 @@ export class VRApp {
     // Update VR controls
     this.vrControls.updateTeleportTargeting(this.teleportMarker);
     this.vrControls.handleSmoothRotation();
+    this.vrControls.handleDebugToggle();
 
     // Get intersection data using unified system
     const isVR = this.appState.renderer.xr.isPresenting;
@@ -235,7 +252,6 @@ export class VRApp {
       intersection ? this.positionManager.calculateTeleportPosition(intersection, isVR) : null,
       isVR
     );
-    this.vrDebugHUD.update();
 
     // Render the scene
     this.appState.renderer.render(this.appState.scene, this.appState.camera);

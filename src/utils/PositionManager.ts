@@ -47,6 +47,24 @@ export class PositionManager {
   }
 
   /**
+   * Cast ray from camera through screen coordinates with surface normal (desktop)
+   */
+  public raycastFromScreenWithNormal(
+    screenX: number, 
+    screenY: number, 
+    camera: THREE.Camera
+  ): { point: THREE.Vector3; normal: THREE.Vector3 } | null {
+    // Convert screen coordinates to normalized device coordinates
+    const mouse = new THREE.Vector2();
+    mouse.x = (screenX / window.innerWidth) * 2 - 1;
+    mouse.y = -(screenY / window.innerHeight) * 2 + 1;
+
+    // Cast ray from camera
+    this.raycaster.setFromCamera(mouse, camera);
+    return this.performRaycastWithNormal();
+  }
+
+  /**
    * Cast ray from VR controller
    */
   public raycastFromController(controller: THREE.Object3D): THREE.Vector3 | null {
@@ -58,6 +76,20 @@ export class PositionManager {
     this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
     
     return this.performRaycast();
+  }
+
+  /**
+   * Cast ray from VR controller with surface normal
+   */
+  public raycastFromControllerWithNormal(controller: THREE.Object3D): { point: THREE.Vector3; normal: THREE.Vector3 } | null {
+    // Extract controller position and rotation
+    const tempMatrix = new THREE.Matrix4();
+    tempMatrix.identity().extractRotation(controller.matrixWorld);
+    
+    this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+    this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+    
+    return this.performRaycastWithNormal();
   }
 
   /**
@@ -74,6 +106,21 @@ export class PositionManager {
   private performRaycast(): THREE.Vector3 | null {
     const intersects = this.raycaster.intersectObjects(this.navigableObjects, true);
     return intersects.length > 0 ? intersects[0].point.clone() : null;
+  }
+
+  /**
+   * Perform raycast and return both intersection point and normal
+   */
+  private performRaycastWithNormal(): { point: THREE.Vector3; normal: THREE.Vector3 } | null {
+    const intersects = this.raycaster.intersectObjects(this.navigableObjects, true);
+    if (intersects.length > 0) {
+      const intersection = intersects[0];
+      return {
+        point: intersection.point.clone(),
+        normal: intersection.face ? intersection.face.normal.clone() : new THREE.Vector3(0, 1, 0)
+      };
+    }
+    return null;
   }
 
   /**

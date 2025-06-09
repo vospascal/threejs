@@ -1,86 +1,90 @@
 import * as THREE from 'three';
-import { BoxLineGeometry } from 'three/examples/jsm/geometries/BoxLineGeometry.js';
-import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
+import { VRButton } from 'three/examples/jsm//webxr/VRButton.js';
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 
+
 let camera, scene, renderer, raycaster;
 let controller1, controller2, controllerGrip1, controllerGrip2;
-let floor, marker, baseReferenceSpace;
+let baseReferenceSpace, INTERSECTION;
 const tempMatrix = new THREE.Matrix4();
-let INTERSECTION;
+const navigable = []; // objects that we can teleport onto
+const inputSources = [];
 
-// desktop pointer‑lock helpers
-let controls, blocker, instructions;
+// Pointer‑lock movement vars
+let controls, moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
-const move = { f: false, b: false, l: false, r: false };
-
-// thumb‑stick rotation helpers
-let inputSources = [];
-let yawOffset = 0; // cumulative yaw in radians
+const clock = new THREE.Clock();
 
 init();
 
 function init() {
-  blocker = document.getElementById('blocker');
-  instructions = document.getElementById('instructions');
-
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x505050);
 
-  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 10);
-  camera.position.set(0, 1.6, 3);
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+  camera.position.set(0, 1.6, 4);
 
-  // Desktop pointer‑lock controls
+  // Lights
+  scene.add(new THREE.HemisphereLight(0xa5a5a5, 0x444444, 2));
+  const dir = new THREE.DirectionalLight(0xffffff, 4);
+  dir.position.set(5, 10, 2);
+  scene.add(dir);
+
+  // Pointer‑lock controls (desktop)
   controls = new PointerLockControls(camera, document.body);
   scene.add(controls.getObject());
-
-  instructions.addEventListener('click', () => {
-    controls.lock();
-  });
-  controls.addEventListener('lock', () => (blocker.style.display = 'none'));
-  controls.addEventListener('unlock', () => (blocker.style.display = 'flex'));
+  const blocker = document.getElementById('blocker');
+  blocker.addEventListener('click', () => { controls.lock(); blocker.style.display = 'none'; });
+  controls.addEventListener('unlock', () => { blocker.style.display = 'flex'; });
 
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup', onKeyUp);
 
-  // Environment
-  scene.add(new THREE.HemisphereLight(0xa5a5a5, 0x898989, 3));
-  const dirLight = new THREE.DirectionalLight(0xffffff, 3);
-  dirLight.position.set(1, 1, 1).normalize();
-  scene.add(dirLight);
-
-  const room = new THREE.LineSegments(
-    new BoxLineGeometry(6, 6, 6, 10, 10, 10).translate(0, 3, 0),
-    new THREE.LineBasicMaterial({ color: 0xbcbcbc })
-  );
-  scene.add(room);
-
-  floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(4.8, 4.8).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0xbcbcbc, transparent: true, opacity: 0.25 })
-  );
-  scene.add(floor);
-
-  marker = new THREE.Mesh(
-    new THREE.CircleGeometry(0.25, 32).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0xbcbcbc })
-  );
-  scene.add(marker);
-
-  // Load GLB island
+  // Load island
   const loader = new GLTFLoader();
   loader.load('low_poly_floating_island.glb', (gltf) => {
-    const model = gltf.scene;
-    model.position.set(0, 0, -2);
-    model.scale.setScalar(0.5);
-    scene.add(model);
+    const island = gltf.scene;
+
+    // compute bounding box BEFORE centering
+    const rawBox = new THREE.Box3().setFromObject(island);
+    const rawSize = rawBox.getSize(new THREE.Vector3());
+    const rawCenter = rawBox.getCenter(new THREE.Vector3());
+
+    // recentre & move bottom to y=0
+    island.position.sub(rawCenter);
+    island.position.y -= rawBox.min.y;
+
+    const SCALE = 3;
+    island.scale.setScalar(SCALE); // enlarge for presence
+    scene.add(island);
+    navigable.push(island);
+
+    // ---- Boxed outline around island ----
+    const size = rawSize.clone().multiplyScalar(SCALE);
+    const lineGeo = new BoxLineGeometry(size.x, size.y, size.z).translate(0, size.y / 1, 0);
+    const bboxMat = new THREE.LineBasicMaterial({ color: 0x00ffff });
+    const bbox = new THREE.LineSegments(lineGeo, bboxMat);
+    scene.add(bbox);
+    // --------------------------------------
+
+    // Position camera so island is in front
+    const radius = Math.max(size.x, size.z) * 1.5;
+    camera.position.set(0, size.y * 1.2, radius);
+    camera.lookAt(new THREE.Vector3(0, size.y / 2, 0));
+    console.log('Island loaded', size);
+  }, undefined, (err) => {
+    console.error('Failed to load GLB model:', err);
   });
 
-  raycaster = new THREE.Raycaster();
+  // Teleport marker
+  const marker = new THREE.Mesh(new THREE.CircleGeometry(0.25, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+  marker.visible = false;
+  scene.add(marker);
 
+  // Renderer
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -88,170 +92,144 @@ function init() {
   document.body.appendChild(renderer.domElement);
   document.body.appendChild(VRButton.createButton(renderer));
 
-  // WebXR session setup
+  // Raycaster for teleport
+  raycaster = new THREE.Raycaster();
+
   renderer.xr.addEventListener('sessionstart', () => {
     baseReferenceSpace = renderer.xr.getReferenceSpace();
     const session = renderer.xr.getSession();
-    inputSources = session.inputSources;
-    session.addEventListener('inputsourceschange', () => (inputSources = session.inputSources));
+    inputSources.length = 0;
+    inputSources.push(...session.inputSources);
+    session.addEventListener('inputsourceschange', () => {
+      inputSources.length = 0;
+      inputSources.push(...session.inputSources);
+    });
+    controls.unlock(); // disable pointer‑lock once in VR
   });
 
   // Controllers
-  setupControllers();
-
-  window.addEventListener('resize', onWindowResize);
-  renderer.setAnimationLoop(animate);
-}
-
-function setupControllers() {
-  function buildController(data) {
-    if (data.targetRayMode === 'tracked-pointer') {
-      const geometry = new THREE.BufferGeometry().setAttribute(
-        'position',
-        new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, -1], 3)
-      );
-      const material = new THREE.LineBasicMaterial({ color: 0xffffff });
-      return new THREE.Line(geometry, material);
-    } else if (data.targetRayMode === 'gaze') {
-      return new THREE.Mesh(
-        new THREE.RingGeometry(0.02, 0.04, 32).translate(0, 0, -1),
-        new THREE.MeshBasicMaterial({ opacity: 0.5, transparent: true })
-      );
-    }
-  }
-
-  function onSelectStart() {
-    this.userData.isSelecting = true;
-  }
-  function onSelectEnd() {
-    this.userData.isSelecting = false;
-    if (INTERSECTION && baseReferenceSpace) {
-      const offsetPosition = { x: -INTERSECTION.x, y: -INTERSECTION.y, z: -INTERSECTION.z, w: 1 };
-      const transform = new XRRigidTransform(offsetPosition, new THREE.Quaternion());
-      const teleportSpace = baseReferenceSpace.getOffsetReferenceSpace(transform);
-      renderer.xr.setReferenceSpace(teleportSpace);
-    }
-  }
-
+  const factory = new XRControllerModelFactory();
   controller1 = renderer.xr.getController(0);
   controller2 = renderer.xr.getController(1);
-  [controller1, controller2].forEach((c) => {
-    c.addEventListener('selectstart', onSelectStart);
-    c.addEventListener('selectend', onSelectEnd);
-    c.addEventListener('connected', (e) => c.add(buildController(e.data)));
-    c.addEventListener('disconnected', () => c.remove(c.children[0]));
-    scene.add(c);
-  });
+  [controller1, controller2].forEach(c => scene.add(c));
 
-  const factory = new XRControllerModelFactory();
   controllerGrip1 = renderer.xr.getControllerGrip(0);
   controllerGrip2 = renderer.xr.getControllerGrip(1);
   controllerGrip1.add(factory.createControllerModel(controllerGrip1));
   controllerGrip2.add(factory.createControllerModel(controllerGrip2));
   scene.add(controllerGrip1);
   scene.add(controllerGrip2);
+
+  function onSelectStart() { this.userData.isSelecting = true; }
+  function onSelectEnd() {
+    this.userData.isSelecting = false;
+    if (INTERSECTION) {
+      const transform = new XRRigidTransform({ x: -INTERSECTION.x, y: -INTERSECTION.y, z: -INTERSECTION.z, w: 1 });
+      renderer.xr.setReferenceSpace(baseReferenceSpace.getOffsetReferenceSpace(transform));
+    }
+  }
+  [controller1, controller2].forEach(c => {
+    c.addEventListener('selectstart', onSelectStart);
+    c.addEventListener('selectend', onSelectEnd);
+  });
+
+  // Simple laser pointer visuals
+  const buildRay = () => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, -1], 3));
+    return new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffffff }));
+  };
+  controller1.add(buildRay());
+  controller2.add(buildRay());
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  renderer.setAnimationLoop(render);
 }
 
-// Desktop key handling
-function onKeyDown(event) {
-  switch (event.code) {
+function onKeyDown(e) {
+  switch (e.code) {
     case 'ArrowUp':
-    case 'KeyW':
-      move.f = true;
-      break;
+    case 'KeyW': moveForward = true; break;
     case 'ArrowLeft':
-    case 'KeyA':
-      move.l = true;
-      break;
+    case 'KeyA': moveLeft = true; break;
     case 'ArrowDown':
-    case 'KeyS':
-      move.b = true;
-      break;
+    case 'KeyS': moveBackward = true; break;
     case 'ArrowRight':
-    case 'KeyD':
-      move.r = true;
-      break;
+    case 'KeyD': moveRight = true; break;
   }
 }
-function onKeyUp(event) {
-  switch (event.code) {
+function onKeyUp(e) {
+  switch (e.code) {
     case 'ArrowUp':
-    case 'KeyW':
-      move.f = false;
-      break;
+    case 'KeyW': moveForward = false; break;
     case 'ArrowLeft':
-    case 'KeyA':
-      move.l = false;
-      break;
+    case 'KeyA': moveLeft = false; break;
     case 'ArrowDown':
-    case 'KeyS':
-      move.b = false;
-      break;
+    case 'KeyS': moveBackward = false; break;
     case 'ArrowRight':
-    case 'KeyD':
-      move.r = false;
-      break;
+    case 'KeyD': moveRight = false; break;
   }
 }
 
-function onWindowResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-}
+function render() {
+  const delta = clock.getDelta();
 
-function animate() {
-  // --- Desktop movement
-  if (!renderer.xr.isPresenting) {
-    const delta = 0.1;
-    velocity.set(0, 0, 0);
-    direction.z = Number(move.f) - Number(move.b);
-    direction.x = Number(move.r) - Number(move.l);
+  // Desktop WASD controls
+  if (controls.isLocked && !renderer.xr.isPresenting) {
+    velocity.x -= velocity.x * 10.0 * delta;
+    velocity.z -= velocity.z * 10.0 * delta;
+    direction.z = Number(moveForward) - Number(moveBackward);
+    direction.x = Number(moveRight) - Number(moveLeft);
     direction.normalize();
-    if (move.f || move.b) velocity.z -= direction.z * delta;
-    if (move.l || move.r) velocity.x -= direction.x * delta;
-    controls.moveRight(-velocity.x);
-    controls.moveForward(-velocity.z);
+    if (moveForward || moveBackward) velocity.z -= direction.z * 20.0 * delta;
+    if (moveLeft || moveRight) velocity.x -= direction.x * 20.0 * delta;
+    controls.moveRight(-velocity.x * delta);
+    controls.moveForward(-velocity.z * delta);
   }
 
-  // --- VR intersection for teleport
+  // Teleport targeting
   INTERSECTION = undefined;
-  [controller1, controller2].forEach((c) => {
-    if (c && c.userData.isSelecting) {
-      tempMatrix.identity().extractRotation(c.matrixWorld);
-      raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
+  [controller1, controller2].forEach(ctrl => {
+    if (ctrl.userData.isSelecting) {
+      tempMatrix.identity().extractRotation(ctrl.matrixWorld);
+      raycaster.ray.origin.setFromMatrixPosition(ctrl.matrixWorld);
       raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-      const hit = raycaster.intersectObjects([floor]);
-      if (hit.length) INTERSECTION = hit[0].point;
+      const hits = raycaster.intersectObjects(navigable, true);
+      if (hits.length > 0) INTERSECTION = hits[0].point;
     }
   });
-  if (INTERSECTION) marker.position.copy(INTERSECTION);
-  marker.visible = INTERSECTION !== undefined;
 
-  // --- VR thumb‑stick rotation
   handleSmoothRotation();
-
   renderer.render(scene, camera);
 }
 
 function handleSmoothRotation() {
-  if (!baseReferenceSpace || !renderer.xr.isPresenting) return;
-  const speed = 0.03; // radians per frame
-  let rotated = false;
-  inputSources.forEach((src) => {
+  if (!baseReferenceSpace) return;
+  const speed = 0.02; // rad/frame
+  inputSources.forEach(src => {
     if (!src.gamepad) return;
     const x = src.gamepad.axes[2] || 0;
-    if (Math.abs(x) > 0.2) {
-      yawOffset += -x * speed;
-      rotated = true;
-    }
+    if (Math.abs(x) < 0.2) return; // dead‑zone
+    const angle = -x * speed;
+
+    // Current head position
+    const position = new THREE.Vector3();
+    position.setFromMatrixPosition(camera.matrixWorld);
+
+    // Y‑axis rotation quaternion
+    const quaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+    const inverse = new THREE.Matrix4().makeRotationFromQuaternion(quaternion).invert();
+    const offsetPosition = position.clone().applyMatrix4(inverse).negate();
+
+    const transform = new XRRigidTransform(
+      { x: offsetPosition.x, y: offsetPosition.y, z: offsetPosition.z, w: 1 },
+      { x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w }
+    );
+    renderer.xr.setReferenceSpace(baseReferenceSpace.getOffsetReferenceSpace(transform));
   });
-  if (!rotated) return;
-  const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawOffset);
-  const transform = new XRRigidTransform({}, { x: q.x, y: q.y, z: q.z, w: q.w });
-  const space = baseReferenceSpace.getOffsetReferenceSpace(transform);
-  renderer.xr.setReferenceSpace(space);
 }
-
-
-

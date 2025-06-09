@@ -6,11 +6,13 @@ export class GLTFAssetLoader {
   private loader: GLTFLoader;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
+  private startingPosition: THREE.Vector3;
 
-  constructor(appState: AppState) {
+  constructor(appState: AppState, startingPosition: THREE.Vector3) {
     this.loader = new GLTFLoader();
     this.scene = appState.scene;
     this.camera = appState.camera;
+    this.startingPosition = startingPosition;
   }
 
   public async loadIsland(
@@ -41,10 +43,9 @@ export class GLTFAssetLoader {
           // Calculate final size after scaling
           const size = rawSize.clone().multiplyScalar(SCALE);
           
-          // Position camera so island is in front
-          const radius = Math.max(size.x, size.z) * 1.5;
-          this.camera.position.set(0, size.y * 1.2, radius);
-          this.camera.lookAt(new THREE.Vector3(0, size.y / 2, 0));
+          // Position camera at the centralized starting position
+          this.camera.position.copy(this.startingPosition);
+          this.camera.lookAt(new THREE.Vector3(0, size.y / 2, 0)); // Look at island center
 
           // Callback for bounding box creation
           if (onBoundingBoxCreated) {

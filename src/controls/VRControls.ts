@@ -6,9 +6,11 @@ export class VRControls {
   private controllers: VRControllers;
   private appState: AppState;
   private tempMatrix: THREE.Matrix4;
+  private startingPosition: THREE.Vector3;
 
-  constructor(appState: AppState) {
+  constructor(appState: AppState, startingPosition: THREE.Vector3) {
     this.appState = appState;
+    this.startingPosition = startingPosition;
     this.tempMatrix = new THREE.Matrix4();
     this.controllers = this.setupControllers();
     this.setupVRSession();
@@ -83,6 +85,9 @@ export class VRControls {
       const referenceSpace = this.appState.renderer.xr.getReferenceSpace();
       if (referenceSpace) {
         this.appState.baseReferenceSpace = referenceSpace;
+        
+        // Set VR starting position
+        this.setVRStartingPosition();
       }
       
       const session = this.appState.renderer.xr.getSession();
@@ -97,6 +102,31 @@ export class VRControls {
         });
       }
     });
+  }
+
+  private setVRStartingPosition(): void {
+    if (!this.appState.baseReferenceSpace) return;
+    
+    // Use the centralized starting position
+    
+    // Create transform to move to starting position
+    const transform = new XRRigidTransform(
+      { 
+        x: -this.startingPosition.x, 
+        y: -this.startingPosition.y, 
+        z: -this.startingPosition.z, 
+        w: 1 
+      }
+    );
+    
+    // Apply the starting position and update the base reference space
+    const newReferenceSpace = this.appState.baseReferenceSpace.getOffsetReferenceSpace(transform);
+    this.appState.renderer.xr.setReferenceSpace(newReferenceSpace);
+    
+    // Update the base reference space so all future transforms are relative to this new position
+    this.appState.baseReferenceSpace = newReferenceSpace;
+    
+    console.log('VR starting position set:', this.startingPosition);
   }
 
   public updateTeleportTargeting(): void {
@@ -119,30 +149,60 @@ export class VRControls {
   public handleSmoothRotation(): void {
     if (!this.appState.baseReferenceSpace) return;
     
-    const speed = 0.02; // rad/frame
+    // Much slower rotation speed
+    const rotationSpeed = 0.005; // Reduced from 0.02
+    const deadZone = 0.3; // Increased dead zone for better control
     
     this.appState.inputSources.forEach(source => {
       if (!source.gamepad) return;
       
-      const x = source.gamepad.axes[2] || 0;
-      if (Math.abs(x) < 0.2) return; // dead-zone
+      // Use right thumbstick X-axis for rotation
+      const thumbstickX = source.gamepad.axes[2] || 0;
       
-      const angle = -x * speed;
-
-      // Current head position
-      const position = new THREE.Vector3();
-      position.setFromMatrixPosition(this.appState.camera.matrixWorld);
-
-      // Y-axis rotation quaternion
-      const quaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
-      const inverse = new THREE.Matrix4().makeRotationFromQuaternion(quaternion).invert();
-      const offsetPosition = position.clone().applyMatrix4(inverse).negate();
-
+      // Apply dead zone
+      if (Math.abs(thumbstickX) < deadZone) return;
+      
+      // Smooth the input with easing
+      const normalizedInput = (Math.abs(thumbstickX) - deadZone) / (1 - deadZone);
+      const easedInput = normalizedInput * normalizedInput; // Quadratic easing
+      const rotationAmount = Math.sign(thumbstickX) * easedInput * rotationSpeed;
+      
+      // Create rotation around Y-axis (vertical axis)
+      const rotationY = -rotationAmount; // Negative for natural direction
+      
+      // Get current position to rotate around
+      const headPosition = new THREE.Vector3();
+      headPosition.setFromMatrixPosition(this.appState.camera.matrixWorld);
+      
+      // Create rotation quaternion
+      const rotationQuaternion = new THREE.Quaternion();
+      rotationQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotationY);
+      
+      // Calculate the offset needed to rotate around the head position
+      const translationToOrigin = new THREE.Vector3(-headPosition.x, 0, -headPosition.z);
+      const translationBack = new THREE.Vector3(headPosition.x, 0, headPosition.z);
+      
+      // Apply rotation to the translation
+      const rotatedTranslation = translationToOrigin.clone().applyQuaternion(rotationQuaternion);
+      const finalTranslation = rotatedTranslation.add(translationBack);
+      
+      // Create the transform
       const transform = new XRRigidTransform(
-        { x: offsetPosition.x, y: offsetPosition.y, z: offsetPosition.z, w: 1 },
-        { x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w }
+        { 
+          x: finalTranslation.x, 
+          y: 0, // Don't change Y position
+          z: finalTranslation.z, 
+          w: 1 
+        },
+        { 
+          x: rotationQuaternion.x, 
+          y: rotationQuaternion.y, 
+          z: rotationQuaternion.z, 
+          w: rotationQuaternion.w 
+        }
       );
       
+      // Apply the transform
       if (this.appState.baseReferenceSpace) {
         this.appState.renderer.xr.setReferenceSpace(
           this.appState.baseReferenceSpace.getOffsetReferenceSpace(transform)

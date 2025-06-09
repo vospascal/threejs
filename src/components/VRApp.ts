@@ -13,6 +13,9 @@ export class VRApp {
   private desktopControls!: DesktopControls;
   private vrControls!: VRControls;
 
+  // Centralized starting position for all components
+  private readonly startingPosition = new THREE.Vector3(-5, 18, 5);
+
   constructor() {
     this.initializeApp();
   }
@@ -28,25 +31,27 @@ export class VRApp {
       inputSources: []
     };
 
-    // Set initial camera position
-    this.appState.camera.position.set(0, 1.6, 4);
+    // Set initial camera position to starting position
+    this.appState.camera.position.copy(this.startingPosition);
 
     // Initialize scene
     this.islandScene = new IslandScene(this.appState);
     this.islandScene.createTeleportMarker();
+    this.islandScene.createReferenceCube();
+    this.islandScene.createVRStartingPoint(this.startingPosition);
 
     // Initialize controls
     this.desktopControls = new DesktopControls(this.appState.camera);
     this.appState.scene.add(this.desktopControls.getObject());
 
     // Initialize VR controls
-    this.vrControls = new VRControls(this.appState);
+    this.vrControls = new VRControls(this.appState, this.startingPosition);
 
     // Setup VR session handling
     this.setupVRSessionHandling();
 
     // Initialize asset loader and load assets
-    this.assetLoader = new GLTFAssetLoader(this.appState);
+    this.assetLoader = new GLTFAssetLoader(this.appState, this.startingPosition);
     this.loadAssets();
 
     // Setup window resize handling

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>three.js vr - teleport with smooth rotation</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%
+    }
+
+    #info {
+      position: absolute;
+      top: 10px;
+      width: 100%;
+      text-align: center;
+      font-family: monospace;
+      color: #fff;
+      z-index: 1
+    }
+
+    #blocker {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer
+    }
+
+    #instructions {
+      font-family: sans-serif;
+      color: #fff;
+      text-align: center;
+      max-width: 600px
+    }
+  </style>
+</head>
+
+<body>
+  <div id="info">
+    <a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> vr - teleport with smooth rotation
+  </div>
+  <div id="info"><a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> – VR teleport demo
+    (thumb‑stick rotation + PointerLock debug)</div>
+  <div id="blocker">
+    <div id="instructions">
+      <h2>Click to enable Pointer‑Lock controls</h2>
+      <p>WASD to move · Mouse to look<br>Press <strong>Esc</strong> to release cursor<br />Enter VR to switch to headset
+      </p>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
+</html>

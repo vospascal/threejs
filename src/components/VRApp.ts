@@ -48,8 +48,8 @@ export class VRApp {
     this.appState.camera.position.copy(gravityAdjustedPosition);
 
     // Initialize scene
-    this.sceneChoice = "islandScene"
-    // this.sceneChoice = "startScene" 
+    // this.sceneChoice = "islandScene"
+    this.sceneChoice = "startScene" 
     switch (this.sceneChoice) {
       case "islandScene":
         this.chosenScene = new IslandScene(this.appState);

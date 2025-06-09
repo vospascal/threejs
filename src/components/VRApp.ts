@@ -8,10 +8,11 @@ import { RendererUtils } from '../utils/RendererUtils';
 import { DebugUI } from '../utils/DebugUI';
 import { PositionManager } from '../utils/PositionManager';
 import { VRDebugHUD } from '../utils/VRDebugHUD';
+import { StartScene } from '../scenes/StartScene';
 
 export class VRApp {
   private appState!: AppState;
-  private islandScene!: IslandScene;
+  private chosenScene!: IslandScene | StartScene;
   private assetLoader!: GLTFAssetLoader;
   private desktopControls!: DesktopControls;
   private vrControls!: VRControls;
@@ -19,6 +20,7 @@ export class VRApp {
   private debugUI!: DebugUI;
   private vrDebugHUD!: VRDebugHUD;
   private positionManager!: PositionManager;
+  private sceneChoice!: string;
 
   // Centralized starting position for all components
   private readonly startingPosition = new THREE.Vector3(-5, 18, 5);
@@ -46,13 +48,27 @@ export class VRApp {
     this.appState.camera.position.copy(gravityAdjustedPosition);
 
     // Initialize scene
-    this.islandScene = new IslandScene(this.appState);
-    this.teleportMarker = this.islandScene.createTeleportMarker();
-    this.islandScene.createReferenceCube();
-    this.islandScene.createVRStartingPoint(this.startingPosition);
-    
+    this.sceneChoice = "islandScene"
+    // this.sceneChoice = "startScene" 
+    switch (this.sceneChoice) {
+      case "islandScene":
+        this.chosenScene = new IslandScene(this.appState);
+        break
+      case "startScene":
+        this.chosenScene = new StartScene(this.appState);
+        break
+      default: 
+        this.chosenScene = new IslandScene(this.appState);
+        break
+    }
+
+    this.teleportMarker = this.chosenScene.createTeleportMarker();
+    this.chosenScene.createReferenceCube();
+    this.chosenScene.createVRStartingPoint(this.startingPosition);
+
     // Create ground plane for gravity and teleportation
-    const groundPlane = this.islandScene.createGroundPlane();
+    const groundPlane = this.chosenScene.createGroundPlane();
+
     this.appState.navigable.push(groundPlane);
 
     // Update position manager with navigable objects
@@ -61,7 +77,7 @@ export class VRApp {
     // Initialize controls
     this.desktopControls = new DesktopControls(this.appState.camera, this.positionManager);
     this.appState.scene.add(this.desktopControls.getObject());
-    
+
     // Add raycast circle to scene
     const raycastCircle = this.desktopControls.getRaycastCircle();
     if (raycastCircle) {
@@ -76,7 +92,8 @@ export class VRApp {
 
     // Initialize asset loader and load assets
     this.assetLoader = new GLTFAssetLoader(this.appState, this.startingPosition);
-    this.loadAssets();
+    // @ts-ignore
+    this.loadAssets(this.sceneChoice);
 
     // Setup window resize handling
     RendererUtils.setupWindowResize(this.appState.camera, this.appState.renderer);
@@ -97,7 +114,7 @@ export class VRApp {
       // Disable desktop controls when entering VR
       this.desktopControls.unlock();
       this.desktopControls.setTeleportationEnabled(false);
-      
+
       // Switch debug displays
       this.debugUI.updateMode(true);
       this.debugUI.setVisible(false); // Hide HTML overlay
@@ -107,7 +124,7 @@ export class VRApp {
     this.appState.renderer.xr.addEventListener('sessionend', () => {
       // Re-enable desktop teleportation when exiting VR
       this.desktopControls.setTeleportationEnabled(true);
-      
+
       // Switch debug displays back
       this.debugUI.updateMode(false);
       this.debugUI.setVisible(true); // Show HTML overlay
@@ -115,23 +132,69 @@ export class VRApp {
     });
   }
 
-  private async loadAssets(): Promise<void> {
+  private async loadAssets(chosenScene: string): Promise<void> {
+    console.log(chosenScene,'chosenScene')
     try {
-      await this.assetLoader.loadIsland(
-        'low_poly_floating_island.glb',
-        this.appState.navigable,
-        (size: THREE.Vector3) => {
-          // Create bounding box when island is loaded
-          this.islandScene.createBoundingBox(size);
-          
-          // Update position manager with new navigable objects
-          this.positionManager.setNavigableObjects(this.appState.navigable);
-          
-          // Update desktop controls with navigable objects and teleport marker
-          this.desktopControls.setNavigableObjects(this.appState.navigable);
-          this.desktopControls.setTeleportMarker(this.teleportMarker);
-        }
-      );
+      switch(chosenScene){
+         case "islandScene":  
+              await this.assetLoader.loadIsland(
+              'low_poly_floating_island.glb',
+              this.appState.navigable,
+              (size: THREE.Vector3) => {
+                // Create bounding box when island is loaded
+                this.chosenScene.createBoundingBox(size);
+
+                // Update position manager with new navigable objects
+                this.positionManager.setNavigableObjects(this.appState.navigable);
+
+                // Update desktop controls with navigable objects and teleport marker
+                this.desktopControls.setNavigableObjects(this.appState.navigable);
+                this.desktopControls.setTeleportMarker(this.teleportMarker);
+              }
+            );
+            break
+         case "startScene":
+            await this.assetLoader.loadStartScene(
+              'starter-scene.glb',
+              this.appState.navigable,
+              (size: THREE.Vector3) => {
+                // Create bounding box when island is loaded
+                this.chosenScene.createBoundingBox(size);
+
+                // Update position manager with new navigable objects
+                this.positionManager.setNavigableObjects(this.appState.navigable);
+
+                // Update desktop controls with navigable objects and teleport marker
+                this.desktopControls.setNavigableObjects(this.appState.navigable);
+                this.desktopControls.setTeleportMarker(this.teleportMarker);
+              }
+            );
+            break
+         default: 
+         console.log('default')
+          await this.assetLoader.loadIsland(
+                'low_poly_floating_island.glb',
+                this.appState.navigable,
+                (size: THREE.Vector3) => {
+                  // Create bounding box when island is loaded
+                  this.chosenScene.createBoundingBox(size);
+
+                  // Update position manager with new navigable objects
+                  this.positionManager.setNavigableObjects(this.appState.navigable);
+
+                  // Update desktop controls with navigable objects and teleport marker
+                  this.desktopControls.setNavigableObjects(this.appState.navigable);
+                  this.desktopControls.setTeleportMarker(this.teleportMarker);
+                }
+              );
+              break
+      }
+ 
+
+
+
+
+
     } catch (error) {
       console.error('Failed to load assets:', error);
     }
@@ -151,13 +214,13 @@ export class VRApp {
     // Get current position and apply gravity
     const currentPosition = this.appState.camera.position;
     const gravityAdjustedPosition = this.positionManager.applyGravity(currentPosition, isVR);
-    
+
     // Only update position if gravity adjustment is needed
     if (gravityAdjustedPosition.distanceTo(currentPosition) > 0.01) {
       this.appState.camera.position.copy(gravityAdjustedPosition);
     }
-    const intersection = isVR 
-      ? this.appState.intersection 
+    const intersection = isVR
+      ? this.appState.intersection
       : this.desktopControls.getLastRaycastHit();
 
     // Update debug displays

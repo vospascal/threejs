@@ -1,16 +1,21 @@
 import * as THREE from 'three';
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory.js';
 import type { VRControllers, AppState } from '../types';
+import { PositionManager } from '../utils/PositionManager';
 
 export class VRControls {
   private controllers: VRControllers;
   private appState: AppState;
   private tempMatrix: THREE.Matrix4;
   private startingPosition: THREE.Vector3;
+  private positionManager: PositionManager;
+  private rotationTriggered: Map<XRInputSource, boolean>;
 
-  constructor(appState: AppState, startingPosition: THREE.Vector3) {
+  constructor(appState: AppState, startingPosition: THREE.Vector3, positionManager: PositionManager) {
     this.appState = appState;
     this.startingPosition = startingPosition;
+    this.positionManager = positionManager;
+    this.rotationTriggered = new Map();
     this.tempMatrix = new THREE.Matrix4();
     this.controllers = this.setupControllers();
     this.setupVRSession();
@@ -66,13 +71,19 @@ export class VRControls {
     const onSelectEnd = () => {
       controller.userData.isSelecting = false;
       if (this.appState.intersection && this.appState.baseReferenceSpace) {
-        const intersection = this.appState.intersection;
-        const transform = new XRRigidTransform(
-          { x: -intersection.x, y: -intersection.y, z: -intersection.z, w: 1 }
+        // Use unified position manager for VR teleportation
+        const newReferenceSpace = this.positionManager.createVRTeleportTransform(
+          this.appState.intersection,
+          this.appState.baseReferenceSpace
         );
-        this.appState.renderer.xr.setReferenceSpace(
-          this.appState.baseReferenceSpace.getOffsetReferenceSpace(transform)
-        );
+        
+        if (newReferenceSpace) {
+          this.appState.renderer.xr.setReferenceSpace(newReferenceSpace);
+          
+          const teleportPos = this.positionManager.calculateTeleportPosition(this.appState.intersection, true);
+          console.log('VR teleporting: Surface:', this.positionManager.formatPosition(this.appState.intersection), 
+                      '→ Standing at:', this.positionManager.formatPosition(teleportPos));
+        }
       }
     };
 
@@ -82,13 +93,14 @@ export class VRControls {
 
   private setupVRSession(): void {
     this.appState.renderer.xr.addEventListener('sessionstart', () => {
+      // Store the original reference space for absolute positioning
       const referenceSpace = this.appState.renderer.xr.getReferenceSpace();
       if (referenceSpace) {
         this.appState.baseReferenceSpace = referenceSpace;
-        
-        // Set VR starting position
-        this.setVRStartingPosition();
       }
+      
+      // Set VR starting position
+      this.setVRStartingPosition();
       
       const session = this.appState.renderer.xr.getSession();
       
@@ -107,9 +119,7 @@ export class VRControls {
   private setVRStartingPosition(): void {
     if (!this.appState.baseReferenceSpace) return;
     
-    // Use the centralized starting position
-    
-    // Create transform to move to starting position
+    // Use the centralized starting position with absolute positioning
     const transform = new XRRigidTransform(
       { 
         x: -this.startingPosition.x, 
@@ -119,95 +129,108 @@ export class VRControls {
       }
     );
     
-    // Apply the starting position and update the base reference space
+    // Apply the starting position using the original reference space
     const newReferenceSpace = this.appState.baseReferenceSpace.getOffsetReferenceSpace(transform);
     this.appState.renderer.xr.setReferenceSpace(newReferenceSpace);
-    
-    // Update the base reference space so all future transforms are relative to this new position
-    this.appState.baseReferenceSpace = newReferenceSpace;
     
     console.log('VR starting position set:', this.startingPosition);
   }
 
-  public updateTeleportTargeting(): void {
+  public updateTeleportTargeting(teleportMarker: THREE.Mesh): void {
     this.appState.intersection = undefined;
     
+    // Check both controllers for surface targeting
     [this.controllers.controller1, this.controllers.controller2].forEach(controller => {
       if (controller.userData.isSelecting) {
-        this.tempMatrix.identity().extractRotation(controller.matrixWorld);
-        this.appState.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-        this.appState.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(this.tempMatrix);
+        // Use unified position manager for VR controller raycast
+        const surfacePoint = this.positionManager.raycastFromController(controller);
         
-        const hits = this.appState.raycaster.intersectObjects(this.appState.navigable, true);
-        if (hits.length > 0) {
-          this.appState.intersection = hits[0].point;
+        if (surfacePoint) {
+          this.appState.intersection = surfacePoint;
+          console.log('VR detected surface at:', this.positionManager.formatPosition(surfacePoint));
         }
       }
     });
+    
+    // Update teleport marker visibility and position
+    if (this.appState.intersection) {
+      teleportMarker.position.copy(this.appState.intersection);
+      teleportMarker.visible = true;
+    } else {
+      teleportMarker.visible = false;
+    }
   }
 
   public handleSmoothRotation(): void {
     if (!this.appState.baseReferenceSpace) return;
     
-    // Much slower rotation speed
-    const rotationSpeed = 0.005; // Reduced from 0.02
-    const deadZone = 0.3; // Increased dead zone for better control
+    const snapAngle = Math.PI / 6; // 30 degrees
+    const deadZone = 0.7; // Higher threshold for snap rotation
     
     this.appState.inputSources.forEach(source => {
       if (!source.gamepad) return;
       
-      // Use right thumbstick X-axis for rotation
+      // Use right thumbstick X-axis for snap rotation
       const thumbstickX = source.gamepad.axes[2] || 0;
       
-      // Apply dead zone
-      if (Math.abs(thumbstickX) < deadZone) return;
-      
-      // Smooth the input with easing
-      const normalizedInput = (Math.abs(thumbstickX) - deadZone) / (1 - deadZone);
-      const easedInput = normalizedInput * normalizedInput; // Quadratic easing
-      const rotationAmount = Math.sign(thumbstickX) * easedInput * rotationSpeed;
-      
-      // Create rotation around Y-axis (vertical axis)
-      const rotationY = -rotationAmount; // Negative for natural direction
-      
-      // Get current position to rotate around
-      const headPosition = new THREE.Vector3();
-      headPosition.setFromMatrixPosition(this.appState.camera.matrixWorld);
-      
-      // Create rotation quaternion
-      const rotationQuaternion = new THREE.Quaternion();
-      rotationQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotationY);
-      
-      // Calculate the offset needed to rotate around the head position
-      const translationToOrigin = new THREE.Vector3(-headPosition.x, 0, -headPosition.z);
-      const translationBack = new THREE.Vector3(headPosition.x, 0, headPosition.z);
-      
-      // Apply rotation to the translation
-      const rotatedTranslation = translationToOrigin.clone().applyQuaternion(rotationQuaternion);
-      const finalTranslation = rotatedTranslation.add(translationBack);
-      
-      // Create the transform
-      const transform = new XRRigidTransform(
-        { 
-          x: finalTranslation.x, 
-          y: 0, // Don't change Y position
-          z: finalTranslation.z, 
-          w: 1 
-        },
-        { 
-          x: rotationQuaternion.x, 
-          y: rotationQuaternion.y, 
-          z: rotationQuaternion.z, 
-          w: rotationQuaternion.w 
+              // Check if we should trigger a snap rotation
+        if (Math.abs(thumbstickX) > deadZone) {
+          // Prevent multiple triggers while holding the stick
+          if (this.rotationTriggered.get(source)) return;
+          this.rotationTriggered.set(source, true);
+          
+          // Determine rotation direction
+          const rotationDirection = thumbstickX > 0 ? 1 : -1;
+          const rotationY = rotationDirection * snapAngle;
+          
+          // Get the current head position to rotate around
+          const headPosition = new THREE.Vector3();
+          headPosition.setFromMatrixPosition(this.appState.camera.matrixWorld);
+          
+          // Create rotation quaternion
+          const rotationQuaternion = new THREE.Quaternion();
+          rotationQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotationY);
+          
+          // To rotate around the head position:
+          // 1. Translate to origin (move head to 0,0,0)
+          // 2. Apply rotation
+          // 3. Translate back
+          
+          // Step 1: Translation to move head to origin
+          const translateToOrigin = new THREE.Vector3(-headPosition.x, -headPosition.y, -headPosition.z);
+          
+          // Step 2 & 3: Apply rotation and translate back
+          // The rotation happens around origin, then we translate back
+          const rotatedTranslation = translateToOrigin.clone().applyQuaternion(rotationQuaternion);
+          const finalTranslation = rotatedTranslation.add(headPosition);
+          
+          // Create the transform
+          const transform = new XRRigidTransform(
+            { 
+              x: finalTranslation.x, 
+              y: finalTranslation.y, 
+              z: finalTranslation.z, 
+              w: 1 
+            },
+            { 
+              x: rotationQuaternion.x, 
+              y: rotationQuaternion.y, 
+              z: rotationQuaternion.z, 
+              w: rotationQuaternion.w 
+            }
+          );
+          
+          // Apply the snap rotation
+          const currentSpace = this.appState.renderer.xr.getReferenceSpace();
+          if (currentSpace) {
+            this.appState.renderer.xr.setReferenceSpace(
+              currentSpace.getOffsetReferenceSpace(transform)
+            );
+          }
+        } else {
+          // Reset trigger when thumbstick returns to center
+          this.rotationTriggered.set(source, false);
         }
-      );
-      
-      // Apply the transform
-      if (this.appState.baseReferenceSpace) {
-        this.appState.renderer.xr.setReferenceSpace(
-          this.appState.baseReferenceSpace.getOffsetReferenceSpace(transform)
-        );
-      }
     });
   }
 

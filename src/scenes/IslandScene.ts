@@ -18,23 +18,60 @@ export class IslandScene {
   }
 
   private setupLighting(): void {
-    // Ambient lighting
-    const hemisphereLight = new THREE.HemisphereLight(0xa5a5a5, 0x444444, 2);
+    // Ambient lighting for general illumination
+    const hemisphereLight = new THREE.HemisphereLight(0xa5a5a5, 0x444444, 1.5);
     this.scene.add(hemisphereLight);
 
-    // Directional light
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 4);
-    directionalLight.position.set(5, 10, 2);
+    // Main directional light (sun)
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 3);
+    directionalLight.position.set(10, 20, 5);
+    directionalLight.castShadow = true;
+    
+    // Configure shadow properties for better quality
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    directionalLight.shadow.camera.near = 0.5;
+    directionalLight.shadow.camera.far = 500;
+    directionalLight.shadow.camera.left = -50;
+    directionalLight.shadow.camera.right = 50;
+    directionalLight.shadow.camera.top = 50;
+    directionalLight.shadow.camera.bottom = -50;
+    
     this.scene.add(directionalLight);
+
+    // Add a fill light to reduce harsh shadows
+    const fillLight = new THREE.DirectionalLight(0x404040, 1);
+    fillLight.position.set(-10, 10, -5);
+    this.scene.add(fillLight);
   }
 
   public createTeleportMarker(): THREE.Mesh {
     const geometry = new THREE.CircleGeometry(0.25, 32).rotateX(-Math.PI / 2);
-    const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    const material = new THREE.MeshBasicMaterial({ 
+      color: 0x00ff00,
+      transparent: true,
+      opacity: 0.8 
+    });
     const marker = new THREE.Mesh(geometry, material);
     marker.visible = false;
     this.scene.add(marker);
     return marker;
+  }
+
+  public createGroundPlane(): THREE.Mesh {
+    // Create a large invisible ground plane for gravity and teleportation
+    const geometry = new THREE.PlaneGeometry(200, 200).rotateX(-Math.PI / 2);
+    const material = new THREE.MeshBasicMaterial({ 
+      color: 0x888888,
+      transparent: true,
+      opacity: 0,
+      visible: false // Invisible but still raycast-able
+    });
+    const groundPlane = new THREE.Mesh(geometry, material);
+    groundPlane.position.y = 0; // At ground level
+    groundPlane.name = 'groundPlane';
+    this.scene.add(groundPlane);
+    return groundPlane;
   }
 
   public createBoundingBox(size: THREE.Vector3): THREE.LineSegments {

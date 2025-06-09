@@ -26,6 +26,31 @@ export class GLTFAssetLoader {
         (gltf: GLTF) => {
           const island = gltf.scene;
           
+          // Ensure all materials are properly set up for solid rendering
+          island.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              // Ensure the mesh has proper material properties
+              if (child.material) {
+                // Make sure materials are not transparent unless intended
+                if (Array.isArray(child.material)) {
+                  child.material.forEach(mat => {
+                    mat.transparent = false;
+                    mat.opacity = 1;
+                    mat.side = THREE.FrontSide;
+                  });
+                } else {
+                  child.material.transparent = false;
+                  child.material.opacity = 1;
+                  child.material.side = THREE.FrontSide;
+                }
+              }
+              
+              // Ensure the mesh casts and receives shadows
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          
           // Compute bounding box BEFORE centering
           const rawBox = new THREE.Box3().setFromObject(island);
           const rawSize = rawBox.getSize(new THREE.Vector3());

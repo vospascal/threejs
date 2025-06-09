@@ -8,6 +8,15 @@ export class RendererUtils {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
     
+    // Enable shadows for solid rendering
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows
+    
+    // Improve material rendering
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    
     document.body.appendChild(renderer.domElement);
     document.body.appendChild(VRButton.createButton(renderer));
     

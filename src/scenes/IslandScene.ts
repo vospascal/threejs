@@ -18,31 +18,25 @@ export class IslandScene {
   }
 
   private setupLighting(): void {
-    // Ambient lighting for general illumination
-    const hemisphereLight = new THREE.HemisphereLight(0xa5a5a5, 0x444444, 1.5);
-    this.scene.add(hemisphereLight);
+    const ambient = new THREE.AmbientLight(0xa0a0fc, 0.82)
+    this.scene.add(ambient)
 
-    // Main directional light (sun)
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 3);
-    directionalLight.position.set(10, 20, 5);
-    directionalLight.castShadow = true;
+    const sunLight = new THREE.DirectionalLight(0xe8c37b, 1.96)
+    sunLight.position.set(10, 25, 20)
+    this.scene.add(sunLight)
+
+    sunLight.castShadow = true;
     
     // Configure shadow properties for better quality
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
-    directionalLight.shadow.camera.near = 0.5;
-    directionalLight.shadow.camera.far = 500;
-    directionalLight.shadow.camera.left = -50;
-    directionalLight.shadow.camera.right = 50;
-    directionalLight.shadow.camera.top = 50;
-    directionalLight.shadow.camera.bottom = -50;
-    
-    this.scene.add(directionalLight);
+    sunLight.shadow.mapSize.width = 4096;
+    sunLight.shadow.mapSize.height = 4096;
+    sunLight.shadow.camera.near = 0.5;
+    sunLight.shadow.camera.far = 500;
+    sunLight.shadow.camera.left = -50;
+    sunLight.shadow.camera.right = 50;
+    sunLight.shadow.camera.top = 50;
+    sunLight.shadow.camera.bottom = -50;
 
-    // Add a fill light to reduce harsh shadows
-    const fillLight = new THREE.DirectionalLight(0x404040, 1);
-    fillLight.position.set(-10, 10, -5);
-    this.scene.add(fillLight);
   }
 
   public createTeleportMarker(): THREE.Mesh {

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 export class PositionManager {
   // Unified constants for the entire application
-  public static readonly DESKTOP_STANDING_HEIGHT = 1.7; // meters above surface for desktop (eye level)
+  public static readonly DESKTOP_STANDING_HEIGHT = 0.25; // meters above surface for desktop (eye level)
   public static readonly VR_STANDING_HEIGHT = 0.1; // meters above surface for VR (just step up, headset is already at eye level)
   public static readonly GROUND_LEVEL = 0; // Y coordinate of ground plane
   public static readonly RAYCAST_DISTANCE = 1000; // max raycast distance

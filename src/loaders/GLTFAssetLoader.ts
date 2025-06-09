@@ -1,15 +1,25 @@
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import type { AppState } from '../types';
 
 export class GLTFAssetLoader {
   private loader: GLTFLoader;
+  private dracoLoader: DRACOLoader;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private startingPosition: THREE.Vector3;
 
   constructor(appState: AppState, startingPosition: THREE.Vector3) {
+    // Setup DRACO loader for compressed models
+    this.dracoLoader = new DRACOLoader();
+    this.dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+    this.dracoLoader.setDecoderConfig({ type: 'js' });
+    
+    // Setup GLTF loader with DRACO support
     this.loader = new GLTFLoader();
+    this.loader.setDRACOLoader(this.dracoLoader);
+    
     this.scene = appState.scene;
     this.camera = appState.camera;
     this.startingPosition = startingPosition;

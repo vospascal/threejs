@@ -9,6 +9,8 @@ import { DebugUI } from '../utils/DebugUI';
 import { PositionManager } from '../utils/PositionManager';
 import { VRDebugHUD } from '../utils/VRDebugHUD';
 import { StartScene } from '../scenes/StartScene';
+import { SimpleLUTEffect } from '../utils/SimpleLUTEffect';
+import { SimpleLUTUI } from '../utils/SimpleLUTUI';
 
 export class VRApp {
   private appState!: AppState;
@@ -21,9 +23,11 @@ export class VRApp {
   private vrDebugHUD!: VRDebugHUD;
   private positionManager!: PositionManager;
   private sceneChoice!: string;
+  private lutEffect!: SimpleLUTEffect;
+  private lutUI!: SimpleLUTUI;
 
   // Centralized starting position for all components
-  private readonly startingPosition = new THREE.Vector3(-5, 18, 5);
+  private readonly startingPosition = new THREE.Vector3(1.03, 0.25, -3.13);
 
   constructor() {
     this.initializeApp();
@@ -64,7 +68,7 @@ export class VRApp {
 
     this.teleportMarker = this.chosenScene.createTeleportMarker();
     this.chosenScene.createReferenceCube();
-    this.chosenScene.createVRStartingPoint(this.startingPosition);
+    // this.chosenScene.createVRStartingPoint(this.startingPosition);
 
     // Create ground plane for gravity and teleportation
     const groundPlane = this.chosenScene.createGroundPlane();
@@ -97,6 +101,11 @@ export class VRApp {
 
     // Setup window resize handling
     RendererUtils.setupWindowResize(this.appState.camera, this.appState.renderer);
+    
+    // Additional resize handling for LUT effect
+    window.addEventListener('resize', () => {
+      // LUT effect handles its own resize
+    });
 
     // Initialize debug UI (HTML overlay for desktop)
     this.debugUI = new DebugUI();
@@ -108,6 +117,10 @@ export class VRApp {
     
     // Setup debug toggle callbacks
     this.setupDebugToggle();
+
+    // Initialize LUT effect
+    this.lutEffect = new SimpleLUTEffect(this.appState, this.positionManager);
+    this.lutUI = new SimpleLUTUI(this.lutEffect);
 
     // Start render loop
     this.appState.renderer.setAnimationLoop(this.render.bind(this));
@@ -253,8 +266,12 @@ export class VRApp {
       isVR
     );
 
-    // Render the scene
-    this.appState.renderer.render(this.appState.scene, this.appState.camera);
+    // Render the scene with LUT effect
+    if (this.lutEffect) {
+      this.lutEffect.render();
+    } else {
+      this.appState.renderer.render(this.appState.scene, this.appState.camera);
+    }
   }
 
   // Public API for external access if needed

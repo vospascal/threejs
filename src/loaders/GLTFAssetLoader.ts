@@ -155,7 +155,9 @@ export class GLTFAssetLoader {
           
           // Position camera at the centralized starting position
           this.camera.position.copy(this.startingPosition);
-          this.camera.lookAt(new THREE.Vector3(0, size.y / 2, 0)); // Look at island center
+          
+          // look at the sword in the stone
+          this.camera.lookAt(new THREE.Vector3(0.24, 0.04, 2.56));
 
           // Callback for bounding box creation
           if (onBoundingBoxCreated) {

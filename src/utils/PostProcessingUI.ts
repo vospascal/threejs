@@ -92,7 +92,7 @@ export class PostProcessingUI {
       .name('Aperture')
       .onChange(this.updateBokehSettings.bind(this));
 
-    this.bokehFolder.add(this.effectController, 'maxblur', 0.0, 5.0)
+    this.bokehFolder.add(this.effectController, 'maxblur', 0.001, 0.01)
       .name('Max Blur')
       .onChange(this.updateBokehSettings.bind(this));
 

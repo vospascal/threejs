@@ -269,7 +269,7 @@ export class SimpleLUTEffect {
   }
 
   public setBokehMaxBlur(maxblur: number): void {
-    this.params.maxblur = Math.max(0, Math.min(0.1, maxblur));
+    this.params.maxblur = Math.max(0.001, Math.min(0.01, maxblur));
   }
 
   public setBokehNearFocus(nearFocus: number): void {

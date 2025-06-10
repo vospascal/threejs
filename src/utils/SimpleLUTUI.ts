@@ -36,7 +36,7 @@ export class SimpleLUTUI {
           this.lutEffect.setBokehAperture(value);
         });
       
-      bokehFolder.add(this.lutEffect.params, 'maxblur', 0, 0.01)
+      bokehFolder.add(this.lutEffect.params, 'maxblur', 0.001, 0.01)
         .name('Max Blur')
         .step(0.01)
         .onChange((value: number) => {
@@ -187,7 +187,7 @@ export class SimpleLUTUI {
         </select>
       </label><br><br>
       <label>
-        Intensity: <input type="range" id="lut-intensity" min="0" max="1" value="1" step="0.1">
+        Intensity: <input type="range" id="lut-intensity" min="0" max="1" value="1" step="0.01">
         <span id="intensity-value">1.0</span>
       </label>
     `;
